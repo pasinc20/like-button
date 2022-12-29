@@ -1,0 +1,209 @@
+<?php
+/**
+ * Plugin Name: Product Like Button for Dokan
+ * Description: Adds a "like" button in the form of a heart shape to products in your WooCommerce store, which users can click on when logged in to "like" the product. The number of likes for each product will be displayed within the button.
+ * Version: 1.0
+ * Author: Your Name
+ * License: GPL2
+ */
+
+/*
+ * Register a custom menu page.
+ */
+function wpdocs_register_product_like_button_menu_page() {
+    add_menu_page(
+        __( 'Product Like Button', 'textdomain' ),
+        'Product Like Button',
+        'manage_options',
+        'product-like-button',
+        'wpdocs_product_like_button_menu_page',
+        'dashicons-heart',
+        6
+    );
+}
+add_action( 'admin_menu', 'wpdocs_register_product_like_button_menu_page' );
+
+/*
+ * Display a custom menu page
+ */
+function wpdocs_product_like_button_menu_page() {
+    ?>
+    <div class="wrap">
+        <h1><?php _e( 'Product Like Button Settings', 'textdomain' ); ?></h1>
+        <form method="post" action="options.php">
+            <?php
+                // Output nonce, action, and option_page fields for a settings page
+                settings_fields( 'wpdocs_product_like_button_options' );
+
+                // Prints out all settings sections added to a particular settings page
+                do_settings_sections( 'product-like-button' );
+
+                // Get the current options from the database
+                $options = get_option( 'wpdocs_product_like_button_options' );
+            ?>
+            <table class="form-table">
+                <tr valign="top">
+                    <th scope="row"><?php _e( 'Button Text', 'textdomain' ); ?></th>
+                    <td><input type="text" name="wpdocs_product_like_button_options[button_text]" value="<?php echo esc_attr( $options['button_text'] ); ?>" /></td>
+                </tr>
+            </table>
+            <?php submit_button(); ?>
+        </form>
+    </div>
+    <?php
+}
+
+/*
+ * Register settings, sections, and fields
+ */
+function wpdocs_product_like_button_settings_init() {
+    // Register a new setting for "wpdocs_product_like_button" page
+    register_setting( 'wpdocs_product_like_button_options', 'wpdocs_product_like_button_options' );
+
+    // Add a new section to the "wpdocs_product_like_button" page
+    add_settings_section(
+        'wpdocs_product_like_button_section',
+        __( 'Customize the "Like" Button', 'textdomain' ),
+        'wpdocs_product_like_button_section_cb',
+        'product-like-button'
+    );
+
+    // Add a new field to the "wpdocs_product_like_button_section" section
+    add_settings_field(
+        'button_text',
+        __( 'Button Text', 'textdomain' ),
+        'wpdocs_product_like_button_button_text_cb',
+        'product-like-button',
+        'wpdocs_product_like_button_section',
+        [
+            'label_for' => 'button_text',
+            'class' => 'wpdocs_product_like_button_row',
+            'wpdocs_product_like_button_custom_data' => 'custom',
+        ]
+    );
+}
+add_action( 'admin_init', 'wpdocs_product_like_button_settings_init' );
+
+/*
+ * Settings section callback function
+ */
+function wpdocs_product_like_button_section_cb( $args ) {
+    ?>
+    <p id="<?php echo esc_attr( $args['id'] ); ?>"><?php _e( 'Customize the text that appears on the "Like" button', 'textdomain' ); ?></p>
+    <?php
+}
+
+/*
+ * Callback function for the "button_text" field
+ */
+function wpdocs_product_like_button_button_text_cb( $args ) {
+    // Get the current options from the database
+    $options = get_option( 'wpdocs_product_like_button_options' );
+    // Render the output
+    ?>
+    <input type="text" id="<?php echo esc_attr( $args['label_for'] ); ?>" data-custom="<?php echo esc_attr( $args['wpdocs_product_like_button_custom_data'] ); ?>" name="wpdocs_product_like_button_options[<?php echo esc_attr( $args['label_for'] ); ?>]" value="<?php echo esc_attr( $options[ $args['label_for'] ] ); ?>">
+    <?php
+}
+
+/*
+ * Enqueue scripts and styles
+ */
+function wpdocs_product_like_button_scripts() {
+    // Only enqueue the scripts and styles on the frontend
+    if ( ! is_admin() ) {
+        // Enqueue the script
+        wp_enqueue_script( 'wpdocs-product-like-button-script', plugin_dir_url( __FILE__ ) . 'js/wpdocs-product-like-button.js', array( 'jquery' ), '1.0', true );
+
+        // Localize the script with data for the AJAX request
+        $ajax_data = array(
+            'ajax_url' => admin_url( 'admin-ajax.php' ),
+            'nonce'    => wp_create_nonce( 'wpdocs_product_like_button_nonce' ),
+        );
+        wp_localize_script( 'wpdocs-product-like-button-script', 'wpdocs_product_like_button_data', $ajax_data );
+
+        // Enqueue the style
+        wp_enqueue_style( 'wpdocs-product-like-button-style', plugin_dir_url( __FILE__ ) . 'css/wpdocs-product-like-button.css' );
+    }
+}
+add_action( 'wp_enqueue_scripts', 'wpdocs_product_like_button_scripts' );
+
+/*
+ * AJAX callback function
+ */
+function wpdocs_product_like_button_ajax_callback() {
+    // Check the nonce and make sure the request is valid
+    check_ajax_referer( 'wpdocs_product_like_button_nonce', 'nonce' );
+
+    // Get the current user ID
+    $user_id = get_current_user_id();
+
+    // Get the product ID
+    $product_id = intval( $_POST['product_id'] );
+
+    // Get the current likes for the product
+    $likes = get_post_meta( $product_id, 'wpdocs_product_like_button_likes', true );
+    if ( empty( $likes ) ) {
+        $likes = 0;
+    }
+
+    // Increment the likes by 1
+    $likes++;
+
+    // Update the likes for the product
+    update_post_meta( $product_id, 'wpdocs_product_like_button_likes', $likes );
+
+    // Update the user's liked products
+    $user_likes = get_user_meta( $user_id, 'wpdocs_product_like_button_user_likes', true );
+    if ( empty( $user_likes ) ) {
+        $user_likes = array();
+    }
+    $user_likes[] = $product_id;
+    update_user_meta( $user_id, 'wpdocs_product_like_button_user_likes', $user_likes );
+	
+	// Return the new number of likes for the product
+wp_send_json_success( array( 'likes' => $likes ) );
+}
+add_action( 'wp_ajax_wpdocs_product_like_button', 'wpdocs_product_like_button_ajax_callback' );
+
+/*
+ * Add the "Like" button to products
+ */
+function wpdocs_product_like_button_add_button() {
+    // Only show the button to logged in users
+    if ( is_user_logged_in() ) {
+        global $product;
+
+        // Get the current user ID
+        $user_id = get_current_user_id();
+
+        // Get the product ID
+        $product_id = $product->get_id();
+
+        // Get the current likes for the product
+        $likes = get_post_meta( $product_id, 'wpdocs_product_like_button_likes', true );
+        if ( empty( $likes ) ) {
+            $likes = 0;
+        }
+
+        // Check if the user has already liked the product
+        $user_likes = get_user_meta( $user_id, 'wpdocs_product_like_button_user_likes', true );
+        if ( empty( $user_likes ) ) {
+            $user_likes = array();
+        }
+        $liked = in_array( $product_id, $user_likes );
+
+        // Get the button text from the plugin settings
+        $options = get_option( 'wpdocs_product_like_button_options' );
+        $button_text = ( ! empty( $options['button_text'] ) ) ? $options['button_text'] : __( 'Like', 'textdomain' );
+
+        // Render the button
+        ?>
+        <button class="wpdocs-product-like-button <?php echo ( $liked ) ? 'liked' : ''; ?>" data-product-id="<?php echo esc_attr( $product_id ); ?>">
+            <span class="like-count"><?php echo esc_html( $likes ); ?></span>
+            <span class="like-text"><?php echo esc_html( $button_text ); ?></span>
+        </button>
+        <?php
+    }
+}
+add_action( 'woocommerce_after_add_to_cart_button', 'wpdocs_product_like_button_add_button' );
+
